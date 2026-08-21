@@ -1,0 +1,33 @@
+# Ambient Virtual Python (dependências locais)
+venv/
+.venv/
+env/
+ENV/
+
+# Arquivos de cache e compilação do Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Arquivos gerados por IDEs e editores de código
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs e arquivos de depuração
+*.log
+
+# Arquivos de dados gerados pela raspagem (evita subir bases pesadas/locais)
+*.csv
+*.xlsx
+*.json
+*.sqlite3
+*.db
+data/
+downloads/
+
+# Arquivos de variáveis de ambiente
+.env
