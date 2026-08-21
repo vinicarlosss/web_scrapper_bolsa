@@ -1,6 +1,5 @@
 import time
-import requests
-from services.http_client import HEADERS, obter_html_empresas
+from services.http_client import HEADERS, get_data
 
 empresas = [
     ["CGRA4", "Grazziotin"],
@@ -159,23 +158,25 @@ empresas = [
 ]
 
 def main():
-    # Cria a sessão do requests
-    session = requests.Session()
-    session.headers.update(HEADERS)
+
+    
+    resultados = {}
 
     for empresa in empresas:
         ticker = empresa[0]
         nome = empresa[1]
         
         print(f"Buscando dados de {nome} ({ticker})...")
-        html = obter_html_empresa(session, ticker)
+        data = get_data(ticker)
+        # Atribui o resultado ao dicionário usando o ticker como chave
+        if data is not None:
+            resultados[ticker] = data
+        else:
+            print(f"Aviso: Não foi possível obter dados para {ticker}.")
         
-        if html:
-            print(f"[OK] {ticker} baixado com sucesso!")
-            # Futuro: chamar a função de parsing aqui
             
         # Intervalo para não sobrecarregar o servidor
         time.sleep(2)
-
+    print(resultados)
 if __name__ == "__main__":
     main()
