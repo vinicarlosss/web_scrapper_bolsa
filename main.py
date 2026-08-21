@@ -1,3 +1,7 @@
+import time
+import requests
+from services.http_client import HEADERS, obter_html_empresas
+
 empresas = [
     ["CGRA4", "Grazziotin"],
     ["BRAV3", "Brava Energia"],
@@ -153,3 +157,25 @@ empresas = [
     ["PINE4", "Banco Pine"],
     ["BMEB4", "Banco Mercantil"]
 ]
+
+def main():
+    # Cria a sessão do requests
+    session = requests.Session()
+    session.headers.update(HEADERS)
+
+    for empresa in empresas:
+        ticker = empresa[0]
+        nome = empresa[1]
+        
+        print(f"Buscando dados de {nome} ({ticker})...")
+        html = obter_html_empresa(session, ticker)
+        
+        if html:
+            print(f"[OK] {ticker} baixado com sucesso!")
+            # Futuro: chamar a função de parsing aqui
+            
+        # Intervalo para não sobrecarregar o servidor
+        time.sleep(2)
+
+if __name__ == "__main__":
+    main()
