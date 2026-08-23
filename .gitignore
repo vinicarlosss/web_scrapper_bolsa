@@ -31,3 +31,5 @@ downloads/
 
 # Arquivos de variáveis de ambiente
 .env
+
+outputs/

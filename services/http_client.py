@@ -7,7 +7,11 @@ HEADERS = {
     "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
 }
 
-def get_data(ticker: str) -> str | None:
+def get_data_earning_yeld(ticker: str):
+    return None
+
+
+def get_data_indicadores(ticker: str) -> str | None:
     """Realiza a requisição HTTP para a página da empresa no Investidor 10."""
     session = requests.Session()
     session.headers.update(HEADERS)
@@ -15,7 +19,7 @@ def get_data(ticker: str) -> str | None:
     url_indicadores = "https://investidor10.com.br/api/historico-indicadores/160/5/?v=2"
     indicadores_headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Referer": f"https://investidor10.com.br/acoes/{ticker}/",
+    "Referer": f"https://investidor10.com.br/acoes/{ticker_clean}/",
     "X-Requested-With": "XMLHttpRequest"
     }
 

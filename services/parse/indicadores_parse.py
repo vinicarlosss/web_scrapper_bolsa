@@ -60,8 +60,6 @@ def parse_historico_indicadores(
         
         df = pd.DataFrame(registros)
         df_pivot = df.pivot(index="Indicador", columns="Ano", values="Valor")
-        print(df_pivot.loc["LPA"])
-        
         # Garante a ordenação das colunas conforme a lista de anos solicitada
         colunas_ordenadas = [col for col in anos_alvo if col in df_pivot.columns]
         return df_pivot[colunas_ordenadas]

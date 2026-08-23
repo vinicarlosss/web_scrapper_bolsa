@@ -1,5 +1,6 @@
 import time
-from services.http_client import HEADERS, get_data
+from services.http_client import get_data_indicadores, get_data_earning_yeld
+from services.excel_exporter import salvar_em_excel_por_abas
 
 empresas = [
     ["CGRA4", "Grazziotin"],
@@ -157,26 +158,29 @@ empresas = [
     ["BMEB4", "Banco Mercantil"]
 ]
 
-def main():
+empresas_teste = [["BMEB4", "Banco Mercantil"], ["PETR4", "PETROBRAS"], ["BBAS3", "Banco do Brasil"], ["ITSA4", "ITAUSA"]]
 
-    
+def main():
     resultados = {}
 
-    for empresa in empresas:
+    for empresa in empresas_teste:
         ticker = empresa[0]
         nome = empresa[1]
-        
+
         print(f"Buscando dados de {nome} ({ticker})...")
-        data = get_data(ticker)
-        # Atribui o resultado ao dicionário usando o ticker como chave
-        if data is not None:
+        data = get_data_earning_yeld(ticker)
+
+        if data is not None and not data.empty:
             resultados[ticker] = data
         else:
             print(f"Aviso: Não foi possível obter dados para {ticker}.")
-        
-            
-        # Intervalo para não sobrecarregar o servidor
+
+        # Intervalo para evitar rate limit na API
         time.sleep(2)
-    print(resultados)
+
+    # Chamada do módulo de exportação isolado
+    salvar_em_excel_por_abas(resultados, "outputs/indicadores_bolsa.xlsx")
+
+
 if __name__ == "__main__":
     main()
