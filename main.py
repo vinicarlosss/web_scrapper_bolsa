@@ -1,5 +1,5 @@
 import time
-from services.http_client import get_data_indicadores, get_data_earning_yeld
+from services.http_client import get_data_indicadores, get_data_earning_yield
 from services.excel_exporter import salvar_em_excel_por_abas
 
 empresas = [
@@ -168,7 +168,7 @@ def main():
         nome = empresa[1]
 
         print(f"Buscando dados de {nome} ({ticker})...")
-        data = get_data_earning_yeld(ticker)
+        data = get_data_earning_yield(ticker)
 
         if data is not None and not data.empty:
             resultados[ticker] = data
