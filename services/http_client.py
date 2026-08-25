@@ -4,45 +4,98 @@ from services.parse.indicadores_parse import parse_historico_indicadores
 from bs4 import BeautifulSoup
 from typing import Optional
 import pandas as pd
+import re
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
 }
 
-def _limpar_valor_detalhado(texto_valor: str) -> Optional[float]:
-    """
-    Converte strings exatas do tipo 'R$ 574.237.659.000' ou 'R$ 312.769.000.000'
-    para o tipo float do Python (ex: 574237659000.0).
-    """
-    if not texto_valor or texto_valor.strip() == "-" or "N/A" in texto_valor:
+def _limpar_valor_status_invest(texto: str) -> float | None:
+    """Limpa a string formatada do Status Invest e converte para float numérico."""
+    if not texto or texto.strip() in ["-", "", "--", "&nbsp;"]:
         return None
 
-    # Remove 'R$', espaços em branco e pontos de milhar
-    texto_limpo = (
-        texto_valor.replace("R$", "")
-        .replace(".", "")
-        .replace(",", ".")
-        .strip()
-    )
+    texto = texto.strip()
+
+    multiplicador = 1.0
+    if "M" in texto:
+        multiplicador = 1_000_000.0
+    elif "B" in texto:
+        multiplicador = 1_000_000_000.0
+    elif "K" in texto:
+        multiplicador = 1_000.0
+
+    limpo = re.sub(r"[^\d,-]", "", texto)
+
+    if "," in limpo:
+        limpo = limpo.replace(".", "").replace(",", ".")
+    else:
+        limpo = limpo.replace(".", "")
 
     try:
-        return float(texto_limpo)
+        return float(limpo) * multiplicador
     except ValueError:
         return None
 
 
+def _get_ebit_from_api(ticker: str) -> float | None:
+    """Consulta a API interna de DRE do Status Invest e retorna o EBIT dos últimos 12 meses."""
+    url_dre = (
+        f"https://statusinvest.com.br/acao/getdre?code={ticker.lower()}&type=0"
+    )
+
+    try:
+        response = requests.get(url_dre, headers=HEADERS, timeout=10)
+        if response.status_code != 200:
+            return None
+
+        res_json = response.json()
+        api_data = res_json.get("data", {})
+        grid = api_data.get("grid", [])
+
+        for row in grid:
+            grid_line = row.get("gridLineModel", {})
+            title = grid_line.get("name", "").upper() or grid_line.get(
+                "key", ""
+            ).upper()
+
+            # Valida a palavra exata EBIT para evitar pegar EBITDA
+            if re.search(r"\bEBIT\b", title):
+                # O array de valores fica dentro de gridLineModel
+                values = grid_line.get("values", [])
+                if values:
+                    # O primeiro elemento refere-se aos Últimos 12 Meses (Últ. 12M)
+                    primeiro_valor = values[0]
+
+                    # Se for um dicionário (ex: {'value': 12345.0, ...})
+                    if isinstance(primeiro_valor, dict):
+                        val = primeiro_valor.get("value")
+                        if val is not None:
+                            return float(val)
+
+                        val_str = primeiro_valor.get("valueFormat")
+                        return _limpar_valor_status_invest(val_str)
+
+                    # Se o array já trouxer os números diretamente (ex: [12345.0, 9876.0])
+                    elif isinstance(primeiro_valor, (int, float)):
+                        return float(primeiro_valor)
+
+                    # Caso venha como string
+                    elif isinstance(primeiro_valor, str):
+                        return _limpar_valor_status_invest(primeiro_valor)
+
+    except Exception as e:
+        print(f"[{ticker}] Erro ao buscar EBIT via API interna: {e}")
+
+    return None
+
 def get_data_earning_yield(
     ticker: str, default_divida_banco: float = 0.0
 ) -> pd.DataFrame:
-    """Acessa o Investidor10 e retorna um DataFrame do Pandas com os dados do ticker.
+    """Acessa o Status Invest e retorna um DataFrame do Pandas com os dados do ticker."""
+    url_pagina = f"https://statusinvest.com.br/acoes/{ticker.lower()}"
 
-    Ações de bancos/financeiras recebem `default_divida_banco` (padrão: 0.0) na
-    Dívida Líquida.
-    """
-    url = f"https://investidor10.com.br/acoes/{ticker.lower()}/"
-
-    # Estrutura padrão para retorno em caso de falha de requisição
     dados = {
         "ticker": [ticker.upper()],
         "valor_de_mercado": [pd.NA],
@@ -51,79 +104,46 @@ def get_data_earning_yield(
     }
 
     try:
-        response = requests.get(url, headers=HEADERS, timeout=10)
+        # 1. Requisição da página HTML para Valor de Mercado e Dívida Líquida
+        response = requests.get(url_pagina, headers=HEADERS, timeout=10)
         if response.status_code != 200:
-            print(f"[{ticker}] Erro HTTP: {response.status_code}")
-            return pd.DataFrame(dados)
+            print(
+                f"[{ticker}] Erro HTTP ao acessar Status Invest: {response.status_code}"
+            )
+            return pd.DataFrame(dados).set_index("ticker")
 
         soup = BeautifulSoup(response.text, "html.parser")
-
-        # 1. Extração de Valor de Mercado e Dívida Líquida no container de indicadores
-        container = soup.find("div", id="table-indicators-company")
 
         valor_mercado = None
         divida_liquida = None
         encontrou_divida = False
 
-        if container:
-            cells = container.find_all("div", class_="cell")
-            for cell in cells:
-                title_tag = cell.find("span", class_="title")
-                if not title_tag:
+        container_top_info = soup.find("div", class_="info-3")
+
+        if container_top_info:
+            blocos = container_top_info.find_all("div", class_="info")
+            for bloco in blocos:
+                title_tag = bloco.find("h3", class_="title")
+                value_tag = bloco.find("strong", class_="value")
+
+                if not title_tag or not value_tag:
                     continue
 
                 titulo = title_tag.get_text(strip=True).upper()
+                valor_str = value_tag.get_text(strip=True)
 
                 if titulo == "VALOR DE MERCADO":
-                    detail_tag = cell.find("div", class_="detail-value")
-                    if detail_tag:
-                        valor_mercado = _limpar_valor_detalhado(
-                            detail_tag.get_text(strip=True)
-                        )
+                    valor_mercado = _limpar_valor_status_invest(valor_str)
 
                 elif titulo in ["DÍVIDA LÍQUIDA", "DIVIDA LIQUIDA"]:
                     encontrou_divida = True
-                    detail_tag = cell.find("div", class_="detail-value")
-                    if detail_tag:
-                        divida_liquida = _limpar_valor_detalhado(
-                            detail_tag.get_text(strip=True)
-                        )
+                    divida_liquida = _limpar_valor_status_invest(valor_str)
 
-        # Trata o caso de bancos/financeiras onde o elemento não existe na página
         if not encontrou_divida:
             divida_liquida = default_divida_banco
 
-        # 2. Extração do EBIT na tabela DRE/Balanço
-        ebit = None
-        tabela_balanco = soup.find("table", id="table-balance-results")
-
-        # Se não achar por id, busca em qualquer tabela do documento
-        linhas_tabela = (
-            tabela_balanco.find_all("tr")
-            if tabela_balanco
-            else soup.find_all("tr")
-        )
-
-        for linha in linhas_tabela:
-            coluna_nome = linha.find("td", class_="column-value")
-            if not coluna_nome:
-                continue
-
-            texto_coluna = coluna_nome.get_text(strip=True).upper()
-
-            # Garante que é exatamente EBIT e não EBITDA ou Margem EBIT
-            if (
-                "EBIT" in texto_coluna
-                and "EBITDA" not in texto_coluna
-                and "MARGEM" not in texto_coluna
-            ):
-                # O primeiro valor com classe 'detail-value' corresponde aos últimos 12 meses (ÚLT. 12M)
-                detail_tag = linha.find("div", class_="detail-value")
-                if detail_tag:
-                    ebit = _limpar_valor_detalhado(
-                        detail_tag.get_text(strip=True)
-                    )
-                break
+        # 2. Requisição direta à API interna para obter o EBIT
+        ebit = _get_ebit_from_api(ticker)
 
         # Atribuição dos valores finais ao dicionário
         dados["valor_de_mercado"] = [
@@ -135,7 +155,7 @@ def get_data_earning_yield(
         dados["ebit"] = [ebit if ebit is not None else pd.NA]
 
     except Exception as e:
-        print(f"[{ticker}] Erro durante o scraping: {e}")
+        print(f"[{ticker}] Erro durante o scraping no Status Invest: {e}")
 
     df = pd.DataFrame(dados)
     df.set_index("ticker", inplace=True)

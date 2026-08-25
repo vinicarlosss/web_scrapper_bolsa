@@ -1,6 +1,8 @@
 import time
 from services.http_client import get_data_indicadores, get_data_earning_yield
 from services.excel_exporter import salvar_em_excel_por_abas
+import pandas as pd
+import os
 
 empresas = [
     ["CGRA4", "Grazziotin"],
@@ -160,10 +162,92 @@ empresas = [
 
 empresas_teste = [["BMEB4", "Banco Mercantil"], ["PETR4", "PETROBRAS"], ["BBAS3", "Banco do Brasil"], ["ITSA4", "ITAUSA"]]
 
+def calcular_earning_yield(df: pd.DataFrame) -> float | None:
+    """Calcula o Earning Yield: EBIT / (Dívida Líquida + Valor de Mercado)"""
+    try:
+        ebit = df["ebit"].values[0]
+        divida_liquida = df["divida_liquida"].values[0]
+        valor_mercado = df["valor_de_mercado"].values[0]
+
+        # Trata valores ausentes ou nulos do Pandas (pd.NA / None)
+        if pd.isna(ebit) or pd.isna(divida_liquida) or pd.isna(valor_mercado):
+            return None
+
+        ev = float(divida_liquida) + float(valor_mercado)
+
+        if ev == 0:
+            return None
+
+        return float(ebit) / ev
+    except (IndexError, KeyError, ValueError, TypeError):
+        return None
+
+def salvar_em_excel_por_abas(
+    resultados: dict[str, pd.DataFrame], caminho_arquivo: str
+):
+    """Salva os dados de cada empresa em uma aba do Excel e formata os números grandes."""
+    if not resultados:
+        print("Nenhum dado para salvar no arquivo Excel.")
+        return
+
+    diretorio = os.path.dirname(caminho_arquivo)
+    if diretorio:
+        os.makedirs(diretorio, exist_ok=True)
+
+    with pd.ExcelWriter(caminho_arquivo, engine="openpyxl") as writer:
+        for ticker, df in resultados.items():
+            df_aba = df.copy()
+
+            ey = calcular_earning_yield(df_aba)
+            df_aba["earning_yield"] = ey if ey is not None else pd.NA
+
+            nome_aba = str(ticker)[:31]
+            df_aba.to_excel(writer, sheet_name=nome_aba, index=True)
+
+            # --- FORMATAÇÃO DE CÉLULAS NO EXCEL ---
+            worksheet = writer.sheets[nome_aba]
+
+            # Define o formato visual das colunas numéricas
+            # R$ #,##0.00 -> Mostra como moeda (ex: R$ 145.000.000.000,00)
+            # 0.00% -> Mostra o Earning Yield como percentual (ex: 12,50%)
+            formato_moeda = 'R$ #,##0.00;[Red]-R$ #,##0.00;"-"'
+            formato_porcentagem = "0.00%"
+
+            # Mapeia os nomes das colunas para suas posições no Excel (1-indexed)
+            # A coluna index (ticker) é a 1 (A). As colunas de dados começam da 2 (B em diante)
+            header_colunas = [df_aba.index.name or "ticker"] + list(
+                df_aba.columns
+            )
+
+            for col_idx, col_name in enumerate(header_colunas, start=1):
+                # Aplica formatação de Moeda para colunas financeiras
+                if col_name in ["valor_de_mercado", "divida_liquida", "ebit"]:
+                    for row_idx in range(2, len(df_aba) + 2):
+                        cell = worksheet.cell(row=row_idx, column=col_idx)
+                        cell.number_format = formato_moeda
+
+                # Aplica formatação de Porcentagem para o Earning Yield
+                elif col_name == "earning_yield":
+                    for row_idx in range(2, len(df_aba) + 2):
+                        cell = worksheet.cell(row=row_idx, column=col_idx)
+                        cell.number_format = formato_porcentagem
+
+            # Ajusta automaticamente a largura das colunas para não cortar números
+            for col in worksheet.columns:
+                max_len = max(len(str(cell.value or "")) for cell in col)
+                col_letter = col[0].column_letter
+                worksheet.column_dimensions[col_letter].width = max(
+                    max_len + 5, 18
+                )
+
+    print(
+        f"\n[SUCESSO] Arquivo Excel exportado com sucesso para: '{caminho_arquivo}'"
+    )
+
 def main():
     resultados = {}
 
-    for empresa in empresas_teste:
+    for empresa in empresas:
         ticker = empresa[0]
         nome = empresa[1]
 
