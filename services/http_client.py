@@ -2,7 +2,6 @@ import time
 import requests
 from services.parse.indicadores_parse import parse_historico_indicadores
 from bs4 import BeautifulSoup
-from typing import Optional
 import pandas as pd
 import re
 
