@@ -160,19 +160,18 @@ def get_data_earning_yield(
     df.set_index("ticker", inplace=True)
     return df
 
-def get_data_indicadores(ticker: str) -> str | None:
+def get_data_indicadores(ticker: str, api_code: int) -> str | None:
     """Realiza a requisição HTTP para a página da empresa no Investidor 10."""
     session = requests.Session()
     session.headers.update(HEADERS)
     ticker_clean = ticker.strip().lower()
-    url_indicadores = "https://investidor10.com.br/api/historico-indicadores/160/5/?v=2"
+    url_indicadores = f"https://investidor10.com.br/api/historico-indicadores/{api_code}/5/?v=2"
     indicadores_headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Referer": f"https://investidor10.com.br/acoes/{ticker_clean}/",
     "X-Requested-With": "XMLHttpRequest"
     }
 
-    
     
     try:
         indicadores_response = session.get(url_indicadores, headers=indicadores_headers, timeout=10)
