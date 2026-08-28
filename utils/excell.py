@@ -1,5 +1,7 @@
 import os
 import pandas as pd
+import openpyxl
+from openpyxl.chart import LineChart, Reference
 
 
 def _aplicar_formatacao(
@@ -69,12 +71,62 @@ def _ajustar_largura_colunas(worksheet):
         worksheet.column_dimensions[col_letter].width = max(max_len + 4, 15)
 
 
+def _adicionar_graficos_individuais(
+    worksheet, start_row: int, df_indicadores: pd.DataFrame, num_colunas: int
+):
+    """Cria um gráfico de linha individual para cada indicador com eixos X e Y visíveis."""
+    categories = Reference(
+        worksheet,
+        min_col=2,
+        min_row=start_row,
+        max_col=num_colunas + 1,
+        max_row=start_row,
+    )
+
+    linha_insercao = start_row + len(df_indicadores) + 3
+
+    for idx, nome_indicador in enumerate(df_indicadores.index):
+        row_num = start_row + 1 + idx
+
+        chart = LineChart()
+        chart.title = f"Evolução: {nome_indicador}"
+        chart.style = 13
+        chart.legend = None
+
+        # Eixo X (Período) e Eixo Y (Valor)
+        chart.x_axis.title = "Período"
+        chart.x_axis.delete = False
+
+        chart.y_axis.title = "Valor"
+        chart.y_axis.delete = False
+
+        # Seleciona apenas a linha do indicador atual
+        data = Reference(
+            worksheet,
+            min_col=1,
+            min_row=row_num,
+            max_col=num_colunas + 1,
+            max_row=row_num,
+        )
+
+        chart.add_data(data, titles_from_data=True, from_rows=True)
+        chart.set_categories(categories)
+
+        chart.height = 8.5
+        chart.width = 16.5
+
+        posicao_grafico = f"B{linha_insercao}"
+        worksheet.add_chart(chart, posicao_grafico)
+
+        linha_insercao += 18
+
+
 def salvar_em_excel_por_abas(
     resultados: dict[str, dict], caminho_arquivo: str
 ):
-    """Gera o arquivo Excel salvando a aba Ranking e as abas individuais
+    """Gera o arquivo Excel com a aba Ranking, abas individuais e
 
-    incluindo a coluna 'Atual' e os anos de 2021 a 2025.
+    um gráfico de linhas dedicado para cada indicador.
     """
     if not resultados:
         print("Nenhum dado para salvar no arquivo Excel.")
@@ -105,9 +157,7 @@ def salvar_em_excel_por_abas(
 
     formato_moeda = 'R$ #,##0.00;[Red]-R$ #,##0.00;"-"'
     formato_porcentagem = "0.00%"
-
-    # Incluído 'Atual' junto dos anos de 2021 a 2025
-    colunas_desejadas = ["Atual", "2025", "2024", "2023", "2022", "2021"]
+    colunas_desejadas = ["2021", "2022", "2023", "2024", "2025", "Atual"]
 
     with pd.ExcelWriter(caminho_arquivo, engine="openpyxl") as writer:
         # --- PRIMEIRA ABA: RANKING ---
@@ -139,11 +189,10 @@ def salvar_em_excel_por_abas(
                 start_row=1,
             )
 
-            # B) Tabela de Indicadores (Abaixo)
+            # B) Tabela de Indicadores e Gráficos Individuais
             if df_indicadores is not None and not df_indicadores.empty:
                 df_ind_filtrado = df_indicadores.copy()
 
-                # Filtra apenas as colunas que correspondem a "Atual" e anos 2021-2025
                 cols_presentes = [
                     c for c in colunas_desejadas if c in df_ind_filtrado.columns
                 ]
@@ -155,7 +204,7 @@ def salvar_em_excel_por_abas(
                 ws_empresa.cell(
                     row=start_row_ind - 1,
                     column=1,
-                    value="Indicadores Fundamentalistas (Atual e 2021 - 2025)",
+                    value="Indicadores Fundamentalistas (2021 - Atual)",
                 )
 
                 df_ind_filtrado.to_excel(
@@ -171,6 +220,14 @@ def salvar_em_excel_por_abas(
                     formato_moeda,
                     formato_porcentagem,
                     start_row=start_row_ind + 1,
+                )
+
+                # C) Gerar os Gráficos Individuais por Indicador
+                _adicionar_graficos_individuais(
+                    worksheet=ws_empresa,
+                    start_row=start_row_ind + 1,
+                    df_indicadores=df_ind_filtrado,
+                    num_colunas=len(cols_presentes),
                 )
 
             _ajustar_largura_colunas(ws_empresa)

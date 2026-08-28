@@ -7,7 +7,7 @@ from utils.excell import salvar_em_excel_por_abas
 def main():
     resultados = {}
 
-    for empresa in empresas_teste:
+    for empresa in empresas:
         ticker = empresa[0]
         nome = empresa[1]
         api_indicadores_code = empresa[2]
