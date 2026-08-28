@@ -7,12 +7,12 @@ from utils.excell import salvar_em_excel_por_abas
 def main():
     resultados = {}
 
-    for empresa in empresas:
+    for i, empresa in enumerate(empresas, start=1):
         ticker = empresa[0]
         nome = empresa[1]
         api_indicadores_code = empresa[2]
 
-        print(f"Buscando dados de {nome} ({ticker})...")
+        print(f"{i} - Buscando dados de {nome} ({ticker})...")
 
         # 1. Busca Earning Yield (Status Invest)
         df_ey = get_data_earning_yield(ticker)

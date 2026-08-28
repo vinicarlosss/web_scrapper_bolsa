@@ -1,7 +1,7 @@
 import os
 import pandas as pd
-import openpyxl
 from openpyxl.chart import LineChart, Reference
+from openpyxl.utils import get_column_letter
 
 
 def _aplicar_formatacao(
@@ -74,7 +74,10 @@ def _ajustar_largura_colunas(worksheet):
 def _adicionar_graficos_individuais(
     worksheet, start_row: int, df_indicadores: pd.DataFrame, num_colunas: int
 ):
-    """Cria um gráfico de linha individual para cada indicador com eixos X e Y visíveis."""
+    """Cria um gráfico de linha individual para cada indicador e os posiciona
+
+    todos em uma única linha horizontal, começando da Coluna A.
+    """
     categories = Reference(
         worksheet,
         min_col=2,
@@ -83,7 +86,11 @@ def _adicionar_graficos_individuais(
         max_row=start_row,
     )
 
-    linha_insercao = start_row + len(df_indicadores) + 3
+    # Quantas colunas do Excel cada gráfico ocupa de largura na horizontal
+    LARGURA_EM_COLUNAS = 10
+
+    # Linha fixa para TODOS os gráficos (logo abaixo da tabela de indicadores)
+    linha_excel = start_row + len(df_indicadores) + 3
 
     for idx, nome_indicador in enumerate(df_indicadores.index):
         row_num = start_row + 1 + idx
@@ -93,14 +100,14 @@ def _adicionar_graficos_individuais(
         chart.style = 13
         chart.legend = None
 
-        # Eixo X (Período) e Eixo Y (Valor)
+        # Configuração de Eixos
         chart.x_axis.title = "Período"
         chart.x_axis.delete = False
 
         chart.y_axis.title = "Valor"
         chart.y_axis.delete = False
 
-        # Seleciona apenas a linha do indicador atual
+        # Dados da linha do indicador atual
         data = Reference(
             worksheet,
             min_col=1,
@@ -112,14 +119,18 @@ def _adicionar_graficos_individuais(
         chart.add_data(data, titles_from_data=True, from_rows=True)
         chart.set_categories(categories)
 
+        # Tamanho de cada gráfico
         chart.height = 8.5
         chart.width = 16.5
 
-        posicao_grafico = f"B{linha_insercao}"
+        # --- CÁLCULO DA POSIÇÃO HORIZONTAL ---
+        # Começa na Coluna 1 (Coluna A) e avança LARGURA_EM_COLUNAS para cada novo gráfico
+        coluna_excel_num = 1 + (idx * LARGURA_EM_COLUNAS)
+        letra_coluna = get_column_letter(coluna_excel_num)
+
+        posicao_grafico = f"{letra_coluna}{linha_excel}"
+
         worksheet.add_chart(chart, posicao_grafico)
-
-        linha_insercao += 18
-
 
 def salvar_em_excel_por_abas(
     resultados: dict[str, dict], caminho_arquivo: str
