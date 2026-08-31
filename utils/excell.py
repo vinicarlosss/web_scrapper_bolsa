@@ -1,7 +1,9 @@
 import os
 import pandas as pd
+import openpyxl
 from openpyxl.chart import LineChart, Reference
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
 
 
 def _aplicar_formatacao(
@@ -135,9 +137,9 @@ def _adicionar_graficos_individuais(
 def salvar_em_excel_por_abas(
     resultados: dict[str, dict], caminho_arquivo: str
 ):
-    """Gera o arquivo Excel com a aba Ranking, abas individuais e
+    """Gera o arquivo Excel com a aba Ranking, aba Priorização (Matriz de Decisão),
 
-    um gráfico de linhas dedicado para cada indicador.
+    abas individuais por empresa e gráficos dedicados para cada indicador.
     """
     if not resultados:
         print("Nenhum dado para salvar no arquivo Excel.")
@@ -170,6 +172,9 @@ def salvar_em_excel_por_abas(
     formato_porcentagem = "0.00%"
     colunas_desejadas = ["2021", "2022", "2023", "2024", "2025", "Atual"]
 
+    # Lista de tickers para a aba de Priorização
+    tickers_lista = list(resultados.keys())
+
     with pd.ExcelWriter(caminho_arquivo, engine="openpyxl") as writer:
         # --- PRIMEIRA ABA: RANKING ---
         df_ranking.to_excel(writer, sheet_name="Ranking", index=True)
@@ -182,6 +187,9 @@ def salvar_em_excel_por_abas(
             start_row=1,
         )
         _ajustar_largura_colunas(ws_ranking)
+
+        # --- SEGUNDA ABA: PRIORIZAÇÃO (MATRIZ DE DECISÃO) ---
+        _gerar_aba_priorizacao(writer, tickers_lista)
 
         # --- ABAS INDIVIDUAIS POR EMPRESA ---
         for ticker, dados in resultados.items():
@@ -246,3 +254,106 @@ def salvar_em_excel_por_abas(
     print(
         f"\n[SUCESSO] Arquivo Excel exportado com sucesso para: '{caminho_arquivo}'"
     )
+
+
+def _gerar_aba_priorizacao(writer, tickers: list[str]):
+    """Cria a aba 'Priorizacao' com perguntas de pontuação, dropdowns de Sim/Não
+
+    e cálculo automático de pontos para priorização de compras.
+    """
+    wb = writer.book
+    ws = wb.create_sheet(title="Priorizacao")
+
+    # 1. Título e Tabela Explicativa das Regras
+    ws["A1"] = "MATRIZ DE PRIORIZAÇÃO DE COMPRA"
+    ws["A1"].font = openpyxl.styles.Font(bold=True, size=14)
+
+    ws["A3"] = "Critério de Pontuação"
+    ws["B3"] = "Pontos se Sim"
+    ws["C3"] = "Pontos se Não"
+
+    regras = [
+        ("1 - Está em recuperação judicial?", -1, 1),
+        ("2 - Lucro por ação crescente?", 1, -1),
+        ("3 - Despesa operacional crescente?", -1, 1),
+        ("4 - Distribui dividendos?", 1, -1),
+        ("5 - Está no ranking de 20 ações mais baratas da bolsa?", 1, -1),
+    ]
+
+    for idx, (pergunta, p_sim, p_nao) in enumerate(regras, start=4):
+        ws.cell(row=idx, column=1, value=pergunta)
+        ws.cell(row=idx, column=2, value=p_sim)
+        ws.cell(row=idx, column=3, value=p_nao)
+
+    # Estiliza cabeçalho das regras
+    for col in range(1, 4):
+        ws.cell(row=3, column=col).font = openpyxl.styles.Font(
+            bold=True, color="FFFFFF"
+        )
+        ws.cell(row=3, column=col).fill = openpyxl.styles.PatternFill(
+            start_color="1F497D", end_color="1F497D", fill_type="solid"
+        )
+
+    # 2. Tabela de Avaliação das Ações
+    start_row_tabela = 11
+
+    headers_tabela = [
+        "Ticker",
+        "Q1: Rec. Judicial? (-1)",
+        "Q2: LPA Crescente? (+1)",
+        "Q3: Despesa Crescente? (-1)",
+        "Q4: Dividendos? (+1)",
+        "Q5: Top 20 Baratas? (+1)",
+        "Pontuação Total",
+    ]
+
+    for col_idx, header in enumerate(headers_tabela, start=1):
+        cell = ws.cell(row=start_row_tabela, column=col_idx, value=header)
+        cell.font = openpyxl.styles.Font(bold=True, color="FFFFFF")
+        cell.fill = openpyxl.styles.PatternFill(
+            start_color="366092", end_color="366092", fill_type="solid"
+        )
+
+    # Criação do Dropdown de seleção (Sim / Não)
+    dv = DataValidation(
+        type="list", formula1='"Sim,Não"', allow_blank=True, showDropDown=True
+    )
+    ws.add_data_validation(dv)
+
+    linha_atual = start_row_tabela + 1
+
+    for ticker in tickers:
+        ws.cell(row=linha_atual, column=1, value=ticker).font = (
+            openpyxl.styles.Font(bold=True)
+        )
+
+        # Preenche dropdown de Sim/Não padrão para Q1 a Q5 (Colunas B até F)
+        for col_idx in range(2, 7):
+            c_cell = ws.cell(row=linha_atual, column=col_idx, value="Não")
+            dv.add(c_cell)
+
+        # Fórmula Excel para calcular a pontuação dinâmica conforme as escolhas
+        # Q1: Sim = -1
+        # Q2: Sim = +1
+        # Q3: Sim = -1
+        # Q4: Sim = +1
+        # Q5: Sim = +1
+        formula = (
+            f'=IF(B{linha_atual}="Sim", -1, 0) + '
+            f'IF(C{linha_atual}="Sim", 1, 0) + '
+            f'IF(D{linha_atual}="Sim", -1, 0) + '
+            f'IF(E{linha_atual}="Sim", 1, 0) + '
+            f'IF(F{linha_atual}="Sim", 1, 0)'
+        )
+
+        cell_total = ws.cell(row=linha_atual, column=7, value=formula)
+        cell_total.font = openpyxl.styles.Font(bold=True)
+        cell_total.alignment = openpyxl.styles.Alignment(horizontal="center")
+
+        linha_atual += 1
+
+    # Adiciona Autofiltro na tabela para você poder ordenar por pontuação
+    max_linha = linha_atual - 1
+    ws.auto_filter.ref = f"A{start_row_tabela}:G{max_linha}"
+
+    _ajustar_largura_colunas(ws)
