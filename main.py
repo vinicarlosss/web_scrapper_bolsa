@@ -1,5 +1,6 @@
 import time
 from services.http_client import get_data_indicadores, get_data_earning_yield, get_dre, get_balanco_patrimonial
+from services.calculos import calcular_coeficientes
 from utils.empresas import empresas, empresas_teste
 from utils.excell import salvar_em_excel_por_abas
 
@@ -20,6 +21,8 @@ def main():
         # 2. Busca o Balanço Patrimonial completo
         balanco_patrimonial_completo = get_balanco_patrimonial(ticker)
 
+        coeficientes = coeficientes = calcular_coeficientes(balanco_patrimonial_completo, dre_completa)
+
         # 3. Busca Earning Yield (Status Invest)
         df_ey = get_data_earning_yield(ticker, dre_dict = dre_completa)
 
@@ -31,7 +34,9 @@ def main():
             resultados[ticker] = {
                 "ey": df_ey,
                 "indicadores": df_indicadores,
-                "dre": dre_completa  # Pode ser None se falhar
+                "dre": dre_completa ,
+                "balanco": balanco_patrimonial_completo, # Pode ser None se falhar
+                "coeficientes": coeficientes
             }
         else:
             print(f"Aviso: Não foi possível obter dados de EY para {ticker}.")

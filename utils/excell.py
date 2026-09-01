@@ -4,6 +4,15 @@ import openpyxl
 from openpyxl.chart import LineChart, Reference
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
+import datetime
+
+# Mapeamento para exibir os nomes dos coeficientes formatados no Excel
+NOMES_COEFICIENTES = {
+    "liquidez_corrente": "Liquidez Corrente",
+    "endividamento": "Coeficiente de Endividamento",
+    "roe": "ROE (Retorno s/ Patrimônio Líquido)",
+    "alavancagem": "Alavancagem Financeira",
+}
 
 
 def _aplicar_formatacao(
@@ -74,42 +83,44 @@ def _ajustar_largura_colunas(worksheet):
 
 
 def _adicionar_graficos_individuais(
-    worksheet, start_row: int, df_indicadores: pd.DataFrame, num_colunas: int
+    worksheet,
+    start_row_dados: int,
+    start_row_posicionamento: int,
+    df_indicadores: pd.DataFrame,
+    num_colunas: int,
 ):
     """Cria um gráfico de linha individual para cada indicador e os posiciona
 
-    todos em uma única linha horizontal, começando da Coluna A.
+    sempre abaixo da última tabela escrita no Excel.
     """
+    # A referência dos dados e categorias continua apontando para onde a tabela de indicadores está (start_row_dados)
     categories = Reference(
         worksheet,
         min_col=2,
-        min_row=start_row,
+        min_row=start_row_dados,
         max_col=num_colunas + 1,
-        max_row=start_row,
+        max_row=start_row_dados,
     )
 
-    # Quantas colunas do Excel cada gráfico ocupa de largura na horizontal
     LARGURA_EM_COLUNAS = 10
 
-    # Linha fixa para TODOS os gráficos (logo abaixo da tabela de indicadores)
-    linha_excel = start_row + len(df_indicadores) + 3
+    # Posição vertical dos gráficos: usa o ponteiro final real com uma folga de 2 linhas
+    linha_excel = start_row_posicionamento + 2
 
     for idx, nome_indicador in enumerate(df_indicadores.index):
-        row_num = start_row + 1 + idx
+        row_num = start_row_dados + 1 + idx
 
         chart = LineChart()
         chart.title = f"Evolução: {nome_indicador}"
         chart.style = 13
         chart.legend = None
 
-        # Configuração de Eixos
         chart.x_axis.title = "Período"
         chart.x_axis.delete = False
 
         chart.y_axis.title = "Valor"
         chart.y_axis.delete = False
 
-        # Dados da linha do indicador atual
         data = Reference(
             worksheet,
             min_col=1,
@@ -121,26 +132,46 @@ def _adicionar_graficos_individuais(
         chart.add_data(data, titles_from_data=True, from_rows=True)
         chart.set_categories(categories)
 
-        # Tamanho de cada gráfico
         chart.height = 8.5
         chart.width = 16.5
 
-        # --- CÁLCULO DA POSIÇÃO HORIZONTAL ---
-        # Começa na Coluna 1 (Coluna A) e avança LARGURA_EM_COLUNAS para cada novo gráfico
         coluna_excel_num = 1 + (idx * LARGURA_EM_COLUNAS)
         letra_coluna = get_column_letter(coluna_excel_num)
 
         posicao_grafico = f"{letra_coluna}{linha_excel}"
-
         worksheet.add_chart(chart, posicao_grafico)
+
+
+def extrair_resumo_dre(dre: dict) -> pd.DataFrame | None:
+    """Extrai Lucro Líquido e Despesas Operacionais da DRE e formata
+
+    no padrão de colunas do histórico (2021 a 2025 + Atual).
+    """
+    colunas_anos = ["2021", "2022", "2023", "2024", "2025", "Atual"]
+
+    # Busca direta pelas chaves exatas da DRE
+    lucro_liquido = dre.get("LUCRO LÍQUIDO - (R$)", [])
+    despesa_op = dre.get("DESPESAS/RECEITAS OPERACIONAIS - (R$)", [])
+
+    if not lucro_liquido or not despesa_op:
+        return None
+
+    # Inverte as listas para que o primeiro elemento fique em 2021 e o último em 'Atual'
+    ll_ordenado = list(reversed(lucro_liquido[:6]))
+    despesa_ordenada = list(reversed(despesa_op[:6]))
+
+    dados = {
+        "Lucro Líquido": ll_ordenado,
+        "Despesa Operacional": despesa_ordenada,
+    }
+
+    df = pd.DataFrame(dados, index=colunas_anos).T
+    return df
+
 
 def salvar_em_excel_por_abas(
     resultados: dict[str, dict], caminho_arquivo: str
 ):
-    """Gera o arquivo Excel com a aba Ranking, aba Priorização (Matriz de Decisão),
-
-    abas individuais por empresa e gráficos dedicados para cada indicador.
-    """
     if not resultados:
         print("Nenhum dado para salvar no arquivo Excel.")
         return
@@ -151,20 +182,16 @@ def salvar_em_excel_por_abas(
 
     dfs_ranking = []
 
-    # 1. Processa o Earning Yield para cada empresa
     for ticker, dados in resultados.items():
         df_ey = dados["ey"].copy()
-
         divida = df_ey["divida_liquida"].fillna(0).values[0]
         vme = df_ey["valor_de_mercado"].values[0]
         ebit = df_ey["ebit"].values[0]
 
         ey = ebit / (divida + vme)
         df_ey["earning_yield"] = ey
-
         dfs_ranking.append(df_ey)
 
-    # 2. Concatena e ordena o Ranking (maior para o menor EY)
     df_ranking = pd.concat(dfs_ranking)
     df_ranking.sort_values(by="earning_yield", ascending=False, inplace=True)
 
@@ -172,11 +199,9 @@ def salvar_em_excel_por_abas(
     formato_porcentagem = "0.00%"
     colunas_desejadas = ["2021", "2022", "2023", "2024", "2025", "Atual"]
 
-    # Lista de tickers para a aba de Priorização
     tickers_lista = list(resultados.keys())
 
     with pd.ExcelWriter(caminho_arquivo, engine="openpyxl") as writer:
-        # --- PRIMEIRA ABA: RANKING ---
         df_ranking.to_excel(writer, sheet_name="Ranking", index=True)
         ws_ranking = writer.sheets["Ranking"]
         _aplicar_formatacao(
@@ -188,14 +213,14 @@ def salvar_em_excel_por_abas(
         )
         _ajustar_largura_colunas(ws_ranking)
 
-        # --- SEGUNDA ABA: PRIORIZAÇÃO (MATRIZ DE DECISÃO) ---
         _gerar_aba_priorizacao(writer, tickers_lista)
 
-        # --- ABAS INDIVIDUAIS POR EMPRESA ---
         for ticker, dados in resultados.items():
             nome_aba = str(ticker)[:31]
             df_ey = dados["ey"]
             df_indicadores = dados.get("indicadores")
+            coeficientes = dados.get("coeficientes")
+            dre_completa = dados.get("dre")
 
             # A) Tabela de Earning Yield (Topo)
             df_ey.to_excel(writer, sheet_name=nome_aba, startrow=0, index=True)
@@ -208,20 +233,22 @@ def salvar_em_excel_por_abas(
                 start_row=1,
             )
 
-            # B) Tabela de Indicadores e Gráficos Individuais
+            linha_atual = len(df_ey) + 4
+
+            # B) Tabela de Indicadores Fundamentalistas
+            cols_presentes = []
+            start_row_graficos = None
+
             if df_indicadores is not None and not df_indicadores.empty:
                 df_ind_filtrado = df_indicadores.copy()
-
                 cols_presentes = [
                     c for c in colunas_desejadas if c in df_ind_filtrado.columns
                 ]
                 if cols_presentes:
                     df_ind_filtrado = df_ind_filtrado[cols_presentes]
 
-                start_row_ind = len(df_ey) + 4
-
                 ws_empresa.cell(
-                    row=start_row_ind - 1,
+                    row=linha_atual - 1,
                     column=1,
                     value="Indicadores Fundamentalistas (2021 - Atual)",
                 )
@@ -229,7 +256,7 @@ def salvar_em_excel_por_abas(
                 df_ind_filtrado.to_excel(
                     writer,
                     sheet_name=nome_aba,
-                    startrow=start_row_ind,
+                    startrow=linha_atual,
                     index=True,
                 )
 
@@ -238,13 +265,81 @@ def salvar_em_excel_por_abas(
                     df_ind_filtrado,
                     formato_moeda,
                     formato_porcentagem,
-                    start_row=start_row_ind + 1,
+                    start_row=linha_atual + 1,
                 )
 
-                # C) Gerar os Gráficos Individuais por Indicador
+                # Salva a linha exata onde a tabela de indicadores começou para montar as referências do gráfico
+                start_row_graficos = linha_atual + 1
+                linha_atual += len(df_ind_filtrado) + 4
+
+            # C) Resumo de DRE
+            if dre_completa:
+                df_resumo_dre = extrair_resumo_dre(dre_completa)
+                if df_resumo_dre is not None:
+                    ws_empresa.cell(
+                        row=linha_atual - 1,
+                        column=1,
+                        value="Resultados de DRE (2021 - Atual)",
+                    )
+
+                    df_resumo_dre.to_excel(
+                        writer,
+                        sheet_name=nome_aba,
+                        startrow=linha_atual,
+                        index=True,
+                    )
+
+                    _aplicar_formatacao(
+                        ws_empresa,
+                        df_resumo_dre,
+                        formato_moeda,
+                        formato_porcentagem,
+                        start_row=linha_atual + 1,
+                    )
+
+                    linha_atual += len(df_resumo_dre) + 4
+
+            # D) Coeficientes Financeiros
+            if coeficientes:
+                num_anos = len(next(iter(coeficientes.values())))
+                colunas_anos = colunas_desejadas[-num_anos:]
+
+                df_coef = pd.DataFrame(coeficientes, index=colunas_anos).T
+                df_coef.rename(index=NOMES_COEFICIENTES, inplace=True)
+
+                ws_empresa.cell(
+                    row=linha_atual - 1,
+                    column=1,
+                    value="Coeficientes e Índices Financeiros",
+                )
+
+                df_coef.to_excel(
+                    writer,
+                    sheet_name=nome_aba,
+                    startrow=linha_atual,
+                    index=True,
+                )
+
+                _aplicar_formatacao(
+                    ws_empresa,
+                    df_coef,
+                    formato_moeda,
+                    formato_porcentagem,
+                    start_row=linha_atual + 1,
+                )
+
+                linha_atual += len(df_coef) + 4
+
+            # E) Gráficos Individuais (Renderizados na última linha real do arquivo)
+            if (
+                df_indicadores is not None
+                and not df_indicadores.empty
+                and start_row_graficos
+            ):
                 _adicionar_graficos_individuais(
                     worksheet=ws_empresa,
-                    start_row=start_row_ind + 1,
+                    start_row_dados=start_row_graficos,  # Onde os dados estão
+                    start_row_posicionamento=linha_atual,  # Onde o gráfico deve ficar (no final da planilha)
                     df_indicadores=df_ind_filtrado,
                     num_colunas=len(cols_presentes),
                 )
