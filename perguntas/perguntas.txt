@@ -1,0 +1,75 @@
+================================================================================
+          MATRIZ DE PRIORIZAÇÃO DE COMPRA DE AÇÕES - 17 CRITÉRIOS
+================================================================================
+
+LISTA DE PERGUNTAS E SISTEMA DE PONTUAÇÃO:
+
+Q1. Está em recuperação judicial?
+    - SIM: -1 ponto
+    - NÃO: +1 ponto
+
+Q2. Está no ranking das 20 ações mais baratas da bolsa?
+    - SIM: +1 ponto
+    - NÃO: -1 ponto
+
+Q3. Margem bruta constante ou crescente acima de 40%?
+    - SIM: +1 ponto
+    - NÃO: -1 ponto
+
+Q4. Lucro líquido crescente?
+    - SIM: +1 ponto
+    - NÃO: -1 ponto
+
+Q5. Lucro por ação (LPA) crescente?
+    - SIM: +1 ponto
+    - NÃO: -1 ponto
+
+Q6. Despesa operacional crescente?
+    - SIM: -1 ponto
+    - NÃO: +1 ponto
+
+Q7. Distribui dividendos?
+    - SIM: +1 ponto
+    - NÃO: -1 ponto
+
+Q8. Estoque crescente?
+    - SIM: +1 ponto
+    - NÃO: -1 ponto
+
+Q9. Caixa e equivalentes de caixa crescente ou constante?
+    - SIM: +1 ponto
+    - NÃO: -1 ponto
+
+Q10. Tem mais dívidas de curto prazo que a longo prazo?
+    - SIM: -1 ponto
+    - NÃO: +1 ponto
+
+Q11. Coeficiente de liquidez constante ou crescente (Ativo Circ. / Passivo Circ.)?
+    - SIM: +1 ponto
+    - NÃO: -1 ponto
+
+Q12. Coeficiente de endividamento constante ou decrescente (Passivo Total / PL)?
+    - SIM: +1 ponto
+    - NÃO: -1 ponto
+
+Q13. Lucro acumulado crescente?
+    - SIM: +1 ponto
+    - NÃO: -1 ponto
+
+Q14. Retorno sobre o patrimônio líquido (ROE) alto/crescente?
+    - SIM: +1 ponto
+    - NÃO: -1 ponto
+
+Q15. Alavancagem crescente?
+    - SIM: -1 ponto
+    - NÃO: +1 ponto
+
+Q16. Está cotada abaixo do preço teto de Décio Bazin?
+    - SIM: +1 ponto
+    - NÃO: -1 ponto
+
+Q17. Está cotada abaixo do valor intrínseco de Graham?
+    - SIM: +1 ponto
+    - NÃO: -1 ponto
+
+================================================================================
