@@ -4,6 +4,7 @@ from services.parse.indicadores_parse import parse_historico_indicadores
 from bs4 import BeautifulSoup
 import pandas as pd
 import re
+import datetime
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -26,6 +27,72 @@ def _limpar_valor_status_invest(val) -> float | None:
         return float(val_str)
     except Exception:
         return None
+
+
+def get_balanco_patrimonial(
+    ticker: str, min_year: int = 2021, max_year: int = None
+) -> dict[str, list[float | None]]:
+    """Busca o Balanço Patrimonial (Ativos) via endpoint /getativos do Status Invest.
+
+    Retorna um dicionário mapeando a chave/nome do indicador para a lista de valores flutuantes.
+    Exemplo:
+        {
+            'AtivoTotal': [2455143253000.0, 2398719197000.0, ...],
+            'AtivoCirculante': [59635525000.0, 83167243000.0, ...],
+            'CaixaeEquivalentesdeCaixa': [19737849000.0, 20079736000.0, ...]
+        }
+    """
+    if max_year is None:
+        max_year = datetime.datetime.now().year
+
+    url_bs = (
+        f"https://statusinvest.com.br/acao/getativos?"
+        f"code={ticker.lower()}&type=0&futureData=false&"
+        f"range.min={min_year}&range.max={max_year}"
+    )
+
+    bs_dict = {}
+
+    try:
+        response = requests.get(url_bs, headers=HEADERS, timeout=10)
+        if response.status_code != 200:
+            print(
+                f"[{ticker}] Erro HTTP {response.status_code} ao buscar ativos."
+            )
+            return bs_dict
+
+        res_json = response.json()
+
+        if not res_json.get("success", False):
+            print(f"[{ticker}] Resposta inválida da API do Status Invest.")
+            return bs_dict
+
+        grid = res_json.get("data", {}).get("grid", [])
+
+        for row in grid:
+            # Ignora linhas de cabeçalho
+            if row.get("isHeader", False):
+                continue
+
+            grid_line = row.get("gridLineModel")
+            if not grid_line:
+                continue
+
+            # Utiliza a chave limpa (ex: 'AtivoTotal', 'CaixaeEquivalentesdeCaixa')
+            # Fallback para 'name' em caixa alta caso 'key' não exista
+            key_name = grid_line.get("key") or str(
+                grid_line.get("name", "")
+            ).strip().upper()
+            values = grid_line.get("values", [])
+
+            if key_name:
+                bs_dict[key_name] = values
+
+    except Exception as e:
+        print(f"[{ticker}] Erro ao processar Balanço Patrimonial: {e}")
+
+    return bs_dict
+
 
 def get_dre(ticker: str) -> dict[str, list[float | None]]:
     """Busca a DRE completa do Status Invest.

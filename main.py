@@ -1,5 +1,5 @@
 import time
-from services.http_client import get_data_indicadores, get_data_earning_yield, get_dre
+from services.http_client import get_data_indicadores, get_data_earning_yield, get_dre, get_balanco_patrimonial
 from utils.empresas import empresas, empresas_teste
 from utils.excell import salvar_em_excel_por_abas
 
@@ -16,6 +16,9 @@ def main():
 
         # 1. Busca a DRE completa primeiro (1 única requisição par a DRE)
         dre_completa = get_dre(ticker)
+
+        # 2. Busca o Balanço Patrimonial completo
+        balanco_patrimonial_completo = get_balanco_patrimonial(ticker)
 
         # 3. Busca Earning Yield (Status Invest)
         df_ey = get_data_earning_yield(ticker, dre_dict = dre_completa)
