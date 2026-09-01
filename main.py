@@ -1,5 +1,5 @@
 import time
-from services.http_client import get_data_indicadores, get_data_earning_yield
+from services.http_client import get_data_indicadores, get_data_earning_yield, get_dre
 from utils.empresas import empresas, empresas_teste
 from utils.excell import salvar_em_excel_por_abas
 
@@ -14,17 +14,21 @@ def main():
 
         print(f"{i} - Buscando dados de {nome} ({ticker})...")
 
-        # 1. Busca Earning Yield (Status Invest)
-        df_ey = get_data_earning_yield(ticker)
+        # 1. Busca a DRE completa primeiro (1 única requisição par a DRE)
+        dre_completa = get_dre(ticker)
 
-        # 2. Busca Indicadores Históricos (Investidor10)
+        # 3. Busca Earning Yield (Status Invest)
+        df_ey = get_data_earning_yield(ticker, dre_dict = dre_completa)
+
+        # 4. Busca Indicadores Históricos (Investidor10)
         df_indicadores = get_data_indicadores(ticker, api_indicadores_code)
 
         if df_ey is not None and not df_ey.empty:
             # Armazena ambos em um dicionário estruturado para a exportação
             resultados[ticker] = {
                 "ey": df_ey,
-                "indicadores": df_indicadores,  # Pode ser None se falhar
+                "indicadores": df_indicadores,
+                "dre": dre_completa  # Pode ser None se falhar
             }
         else:
             print(f"Aviso: Não foi possível obter dados de EY para {ticker}.")
