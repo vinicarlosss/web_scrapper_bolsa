@@ -257,14 +257,9 @@ def salvar_em_excel_por_abas(
 
 
 def _gerar_aba_priorizacao(writer, tickers: list[str]):
-    """Cria a aba 'Priorizacao' com perguntas de pontuação, dropdowns de Sim/Não
-
-    e cálculo automático de pontos para priorização de compras.
-    """
     wb = writer.book
     ws = wb.create_sheet(title="Priorizacao")
 
-    # 1. Título e Tabela Explicativa das Regras
     ws["A1"] = "MATRIZ DE PRIORIZAÇÃO DE COMPRA"
     ws["A1"].font = openpyxl.styles.Font(bold=True, size=14)
 
@@ -273,11 +268,23 @@ def _gerar_aba_priorizacao(writer, tickers: list[str]):
     ws["C3"] = "Pontos se Não"
 
     regras = [
-        ("1 - Está em recuperação judicial?", -1, 1),
-        ("2 - Lucro por ação crescente?", 1, -1),
-        ("3 - Despesa operacional crescente?", -1, 1),
-        ("4 - Distribui dividendos?", 1, -1),
-        ("5 - Está no ranking de 20 ações mais baratas da bolsa?", 1, -1),
+        ("1 - Está em recuperação judicial?", -1, 0),
+        ("2 - Está no ranking das 20 ações mais baratas?", 1, 0),
+        ("3 - Margem bruta constante ou crescente acima de 40%?", 1, 0),
+        ("4 - Lucro líquido crescente?", 1, 0),
+        ("5 - Lucro por ação crescente?", 1, 0),
+        ("6 - Despesa operacional crescente?", -1, 0),
+        ("7 - Distribui dividendos?", 1, 0),
+        ("8 - Estoque crescente?", 1, 0),
+        ("9 - Caixa e equivalentes crescente ou constante?", 1, 0),
+        ("10 - Tem mais dívidas de curto prazo que longo prazo?", -1, 0),
+        ("11 - Coeficiente de liquidez constante/crescente?", 1, 0),
+        ("12 - Coeficiente de endividamento constante/decrescente?", 1, 0),
+        ("13 - Lucro acumulado crescente?", 1, 0),
+        ("14 - Retorno sobre o PL (ROE) alto/crescente?", 1, 0),
+        ("15 - Alavancagem crescente?", -1, 0),
+        ("16 - Cotada abaixo do preço teto de Bazin?", 1, 0),
+        ("17 - Cotada abaixo do valor intrínseco de Graham?", 1, 0),
     ]
 
     for idx, (pergunta, p_sim, p_nao) in enumerate(regras, start=4):
@@ -285,7 +292,6 @@ def _gerar_aba_priorizacao(writer, tickers: list[str]):
         ws.cell(row=idx, column=2, value=p_sim)
         ws.cell(row=idx, column=3, value=p_nao)
 
-    # Estiliza cabeçalho das regras
     for col in range(1, 4):
         ws.cell(row=3, column=col).font = openpyxl.styles.Font(
             bold=True, color="FFFFFF"
@@ -294,18 +300,32 @@ def _gerar_aba_priorizacao(writer, tickers: list[str]):
             start_color="1F497D", end_color="1F497D", fill_type="solid"
         )
 
-    # 2. Tabela de Avaliação das Ações
-    start_row_tabela = 11
+    start_row_tabela = 24
 
     headers_tabela = [
         "Ticker",
-        "Q1: Rec. Judicial? (-1)",
-        "Q2: LPA Crescente? (+1)",
-        "Q3: Despesa Crescente? (-1)",
-        "Q4: Dividendos? (+1)",
-        "Q5: Top 20 Baratas? (+1)",
-        "Pontuação Total",
+        "Q1: Rec. Jud. (-1)",
+        "Q2: Top 20 (+1)",
+        "Q3: M. Bruta (+1)",
+        "Q4: L. Líquido (+1)",
+        "Q5: LPA (+1)",
+        "Q6: Desp. Cresc. (-1)",
+        "Q7: Dividendos (+1)",
+        "Q8: Estoque (+1)",
+        "Q9: Caixa (+1)",
+        "Q10: Dív. Curto Pr. (-1)",
+        "Q11: Liquidez (+1)",
+        "Q12: Endividamento (+1)",
+        "Q13: L. Acumulado (+1)",
+        "Q14: ROE (+1)",
+        "Q15: Alavancagem (-1)",
+        "Q16: Teto Bazin (+1)",
+        "Q17: Graham (+1)",
+        "Pontuação\nTotal",  # Quebra de linha para economizar largura
     ]
+
+    # Define o índice correto da última coluna (Coluna R / 18)
+    col_total_idx = len(headers_tabela)
 
     for col_idx, header in enumerate(headers_tabela, start=1):
         cell = ws.cell(row=start_row_tabela, column=col_idx, value=header)
@@ -313,8 +333,10 @@ def _gerar_aba_priorizacao(writer, tickers: list[str]):
         cell.fill = openpyxl.styles.PatternFill(
             start_color="366092", end_color="366092", fill_type="solid"
         )
+        cell.alignment = openpyxl.styles.Alignment(
+            horizontal="center", vertical="center", wrap_text=True
+        )
 
-    # Criação do Dropdown de seleção (Sim / Não)
     dv = DataValidation(
         type="list", formula1='"Sim,Não"', allow_blank=True, showDropDown=True
     )
@@ -327,33 +349,37 @@ def _gerar_aba_priorizacao(writer, tickers: list[str]):
             openpyxl.styles.Font(bold=True)
         )
 
-        # Preenche dropdown de Sim/Não padrão para Q1 a Q5 (Colunas B até F)
-        for col_idx in range(2, 7):
+        partes_formula = []
+
+        # Iterando pelas 17 colunas de perguntas (Colunas B até R / 2 até 18)
+        for idx_regra, (pergunta, p_sim, p_nao) in enumerate(regras):
+            col_idx = idx_regra + 2
             c_cell = ws.cell(row=linha_atual, column=col_idx, value="Não")
             dv.add(c_cell)
 
-        # Fórmula Excel para calcular a pontuação dinâmica conforme as escolhas
-        # Q1: Sim = -1
-        # Q2: Sim = +1
-        # Q3: Sim = -1
-        # Q4: Sim = +1
-        # Q5: Sim = +1
-        formula = (
-            f'=IF(B{linha_atual}="Sim", -1, 0) + '
-            f'IF(C{linha_atual}="Sim", 1, 0) + '
-            f'IF(D{linha_atual}="Sim", -1, 0) + '
-            f'IF(E{linha_atual}="Sim", 1, 0) + '
-            f'IF(F{linha_atual}="Sim", 1, 0)'
-        )
+            col_letter = openpyxl.utils.get_column_letter(col_idx)
+            termo_formula = (
+                f'IF({col_letter}{linha_atual}="Sim",{p_sim},'
+                f'IF({col_letter}{linha_atual}="Não",{p_nao},0))'
+            )
+            partes_formula.append(termo_formula)
 
-        cell_total = ws.cell(row=linha_atual, column=7, value=formula)
+        formula_total = "=" + " + ".join(partes_formula)
+
+        # Grava a fórmula na coluna 18 (Coluna R)
+        cell_total = ws.cell(
+            row=linha_atual, column=col_total_idx, value=formula_total
+        )
         cell_total.font = openpyxl.styles.Font(bold=True)
         cell_total.alignment = openpyxl.styles.Alignment(horizontal="center")
 
         linha_atual += 1
 
-    # Adiciona Autofiltro na tabela para você poder ordenar por pontuação
     max_linha = linha_atual - 1
-    ws.auto_filter.ref = f"A{start_row_tabela}:G{max_linha}"
+    col_letter_max = openpyxl.utils.get_column_letter(col_total_idx)
+    ws.auto_filter.ref = f"A{start_row_tabela}:{col_letter_max}{max_linha}"
 
     _ajustar_largura_colunas(ws)
+
+    # Trava a largura da coluna de Pontuação Total para 14 para não esticar
+    ws.column_dimensions[col_letter_max].width = 14
